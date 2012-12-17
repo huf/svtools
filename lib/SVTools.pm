@@ -1,6 +1,8 @@
-package App::SVTools;
+package SVTools;
 use strict;
 use warnings;
+
+use Text::CSV;
 
 use Exporter 'import';
 our @EXPORT = qw/
@@ -13,7 +15,7 @@ our @EXPORT = qw/
 our $VERSION = '0.1';
 
 use Getopt::Long;
-Getopt::Long::Configure ("bundling");
+Getopt::Long::Configure("bundling");
 
 my $USAGE = "[options] [files...]";
 my @OPT_SPEC = qw/
@@ -124,6 +126,51 @@ sub usage {
 	$msg
 }	
 
+sub read_sv {
+	my %p = @_;
+	if ($p{fh}) {
+		read_sv_stream(%p);
+	}
+	elsif ($p{files}) {
+		my @files = @{ delete $p{files} };
+		for my $f (@files) {
+			open my $fh, '<', $f or die "cannot open $f: $!\n";
+			read_sv_stream(table => $f, fh => $fh, %p);
+		}
+	}
+	else {
+		die "read_sv_stream fh => ... OR files => [ ... ]\n";
+	}
+}
+
+sub read_sv_stream {
+	my %p = @_;
+	my $fh = delete $p{fh};
+
+	binmode $fh, ":encoding($OPTIONS{ienc})";
+	
+	my $csv = Text::CSV->new({
+			binary => 1,
+			%{ $p{csv_params} || {} },
+		}) or die "cannot instantiate Text::CSV: ".Text::CSV->error_diag()."\n";
+
+	my $first_line = 1;
+	while (my $row = $csv->getline($fh)) {
+		if (@$row == 1 && $row->[0] =~ /^\N{INFORMATION SEPARATOR FOUR}/) {
+			$first_line = 1;
+		}
+		if ($first_line) {
+			$first_line = 0;
+		}
+		use Data::Dumper;
+		$Data::Dumper::Useqq=1;
+		print Dumper $row;
+	}
+}
+
+1
+
+__END__
 sub read_sv {
 	my %p = @_;
 	if ($p{fh}) {
