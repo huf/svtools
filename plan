@@ -1,0 +1,184 @@
+svcat
+	svcat [files...]
+	act like cat(1) except:
+	emit \N{FS} between files
+	-m --machine (never swap output to svcat) (common option)
+
+svsee
+	svsee [options] [files...]
+	Text::Table::Tiny
+	-o --output-encoding
+		default to utf8
+
+svconv (to and from csv)
+	svconv [options] [files...]
+	Text::CSV
+	conversion specification:
+		-f --from
+		-t --to
+			both take SPEC
+			SPEC:
+				csv
+				csv:<s><q><r>
+					where:
+						s: field separator char, default is ,
+						q: quote char, default is "
+						r: record separator char, default is \n
+						\x{...} hex character escapes are supported
+						\N{...} named characters also
+				csvh
+					same as csv, but first row is header
+
+				sv
+					default, our own format
+					meaning:
+					$ svconv
+					is a noop
+					actually alias for tsv:\N{US}\N{RS}
+					EXCEPT
+					when streaming it via stdin/out, \N{FS} is used to separate files
+					AND column names are in the first row always
+					_always_ utf8 encoded, die if conflicting options are given
+
+				tsv
+				tsv:<s><r>
+					same as csv but with no quoting, except
+					s defaults to \t
+				
+
+		OR arbitrary string-separated things with:
+			--from-fs STRING
+			--from-q STRING (if not specified, no quoting)
+			--from-rs STRING
+			--to-fs STRING
+			--to-q STRING
+			--to-rs STRING
+
+	in case of sv output
+		--table t1:c1,c2,c3
+			can be specified multiple times, for multiple tables
+			column names default to c1 unless input is csvh
+			table names default to t1 unless input is given as files, in which case to filename
+
+	in case of sv input and FILE (or stdout) output:
+		all tables except first are discarded
+
+	in case of sv input and DIRECTORY output
+		--table t1:c1,c2,....
+		can be used to override embedded table names
+		will create a file for each table
+
+	-i --input-encoding
+	-o --output-encoding
+		default to utf8
+
+		
+
+svsql
+	svsql [options] <query> [files...]
+	DBD::CSV
+	--tables t1,t2,...
+		rename (or, if we're reading from stdin, give name) to tables
+		default names are t1, t2, t3, ...
+
+	when given stdin, looks like i'll have to tempfile it
+
+	require DBI;
+	my $dbh = DBI->connect ("dbi:CSV:");
+	$dbh->{csv_tables}{passwd} = {
+		eol         => "\n",
+		sep_char    => ":",
+		quote_char  => undef,
+		escape_char => undef,
+		file        => "/etc/passwd",
+		col_names   => [qw( login password uid gid realname directory shell )],
+	};
+	$sth = $dbh->prepare ("SELECT * FROM passwd");
+
+svawk
+	svawk [options] <awk code> [files...]
+	just trick awk :)
+	$0, $1, etc, aint no thang else motherfucker
+	(but skip header lines, maybe fiddle with internal "current filename" var)
+
+svperl (sort of like -lane)
+	svperl [options] <perl code> [files...]
+	$_{colname}
+	$_ -- current table (file)
+
+svsort
+	svsort [-r] <col> [file]
+	svsql 'SELECT * FROM file ORDER BY col -r ? ASC : DESC' [file]
+
+svhead 
+	svhead -1
+	svhead -n 1
+	svhead -t 1
+		start at nth table
+
+svtail
+	svtail -1
+	svtail -n -1
+	svtail -t 1
+		start at table nth from bottom
+
+COMMON FUNCTIONALITY:
+	THE WHOLE GODDAM OPTION HANDLING... + USAGE + SHEEEIT
+	encoding handling
+	table/column name handling
+	our own format handling
+	calling svsee on ourselves if output is tty
+		if (-t STDOUT) {
+			pipe r, w
+			fork || do { 
+				open STDIN, '<&', r; 
+				exec 'svsee'; # also, if -o/--output-encoding was passed to parent, pass that along.
+				abort
+			};
+			open STDOUT, '>&', w;
+		}
+
+outputs: csv, Text::Table
+make options and all that as common as possible
+csv should have an excel utf8 variant with bom shit and all that
+	also the thing aron found (what was it?)
+multiple "tables" on stdin? with \N{FS}? metadata?
+perhaps some utils could invoke svsee on their output if stdout is tty. if so, need option to suppress!
+
+
+figure out input encodings
+
+argv should be encoded/decoded according to input encoding (and maybe output?)
+
+svconv should have only one (optional) file arg for input and one for output
+
+include table name in format somewhere?
+iron out what the format actually is.
+	streaming format contains metadata (table name)
+	file-stored things store table name in filename
+
+then i can kill the ugly --table hack around the exec svsee
+
+--long-help option! (Pod::Man)
+
+SV FILE FORMAT:
+	- make Text::CSV process this shit, really.
+	- always utf8
+
+	STANDALONE:
+		[ c1 US c2 US c3 .... cn ] RS
+		f1 US f2 US f3 .... fn RS
+		....
+
+		- last RS is optional
+		- if first line is '' (file starts with RS), generate column names (c1..cn)
+		- table name is filename unless overridden --table
+
+	STREAMING (but also, can be in standalone files to override table name)
+		[ FS [ table_name GS ] ]
+		STANDALONE
+		...
+
+		- if table_name GS is left off, generate table name (t, t2...tn) unless overridden --table
+		- the very first FS can be left off (along with the table_name GS)
+			but ONLY THE VERY FIRST

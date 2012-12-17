@@ -1,0 +1,53 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+use File::Basename qw/dirname/;
+use lib dirname(__FILE__).'/../lib';
+use App::SVTools;
+
+use Text::Table::Tiny;
+
+my $opts = common_options(
+	no_svsee => 1,
+);
+
+
+my @rows;
+
+sub row {
+	push @rows, shift;
+}
+
+sub show {
+	my ($t) = @_;
+
+	if (@rows) {
+		print "$t:\n";
+		print Text::Table::Tiny::table(
+			rows => \@rows,
+			header_row => 1,
+		), "\n"x2;
+		@rows = ();
+	}
+}
+
+my @call = (
+	on_table_end => \&show,
+	on_header => \&row,
+	on_row => \&row,
+);
+
+if (@ARGV) {
+	read_sv(
+		@call,
+		files => \@ARGV,
+	);
+}
+else {
+	read_sv(
+		@call,
+		fh => \*STDIN,
+		
+	);
+}

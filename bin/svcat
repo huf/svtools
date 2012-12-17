@@ -1,0 +1,37 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+use File::Basename qw/dirname/;
+use lib dirname(__FILE__).'/../lib';
+use App::SVTools;
+
+sub one_fh {
+	my $fh = shift;
+	my $buf = '';
+	while (read $fh, $buf, 8192) {
+		print $buf;
+	}
+	if (substr($buf, -1, 1) ne "\N{RS}") {
+		print "\N{RS}";
+	}
+	print "\N{FS}";
+}
+
+common_options();
+
+if (@ARGV) {
+	while (my $f = shift @ARGV) {
+		my $fh;
+		if ($f eq '-') {
+			$fh = \*STDIN;
+		}
+		else {
+			open $fh, '<', $f or die "cannot open $f: $!\n";
+		}
+		one_fh $fh;
+	}
+}
+else {
+	one_fh \*STDIN;
+}

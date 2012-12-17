@@ -1,0 +1,152 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+use File::Basename qw/dirname/;
+use lib dirname(__FILE__).'/../lib';
+use App::SVTools;
+
+use Text::CSV;
+
+my $opts = common_options(
+	no_svsee => 1,
+	need_ienc => 1,
+	opt_spec => [qw/
+		from|f=s
+		to|t=s
+		from-fs=s
+		from-q=s
+		from-rs=s
+		to-fs=s
+		to-q=s
+		to-rs=s
+	/],
+);
+
+options($opts);
+
+sub options {
+	my $opts = shift;
+
+	$opts->{from} ||= 'sv';
+	$opts->{to} ||= 'sv';
+	$opts->{$_} = parse_spec($opts->{$_}) for qw/from to/;
+
+	for my $dir (qw/from to/) {
+		for my $key (qw/fs q rs/) {
+			if (defined $opts->{"$dir-$key"}) {
+				if ($opts->{$dir}{type} eq "sv") {
+					die "cannot set --$dir-$key on sv\n";
+				}
+				if ($key eq 'q' && $opts->{$dir}{type} eq 'tsv') {
+					die "cannot set --$dir-$key on tsv\n";
+				}
+				my @okeys = (
+					$key eq 'fs' ? 'sep_char'
+					: $key eq 'q' ? ('quote_char', 'escape_char')
+					: 'eol'
+				);
+
+				for (@okeys) {
+					$opts->{$dir}{opts}{ $_ } = $opts->{"$dir-$key"};
+				}
+			}
+		}
+	}
+}
+
+sub parse_charspecs {
+	my $s = shift;
+	$s =~ s@(\\[xN]\{[^}]+\}|\\[nrt])@qq{"$1"}@eegr;
+}
+
+sub parse_spec {
+	my $spec = shift;
+	if ($spec eq 'sv') {
+		return { type => 'sv' };
+	}
+	elsif ($spec =~ /^[tc]sv/) {
+		($spec, my $rest) = split /:/, $spec, 2;
+
+		$rest = parse_charspecs($rest);
+
+		my @rest = split //, $rest;
+
+		my $header = $spec =~ s/h\z//;
+
+		my ($eol, $sep_char, $quote_char);
+		if ($spec eq 'csv') {
+			die "csv:SQR\n" if @rest > 3;
+			$sep_char = $rest[0] // ',';
+			$quote_char = $rest[1] // '"';
+			$eol = $rest[2] // "\n";
+		}
+		else {
+			die "csv:SR\n" if @rest > 2;
+			$sep_char = $rest[0] // "\t";
+			$eol = $rest[1] // "\n";
+		}
+		return {
+			type => $spec,
+			has_header => $header,
+			opts => {
+				eol => $eol,
+				sep_char => $sep_char,
+				quote_char => $quote_char,
+				escape_char => $quote_char,
+			},
+		};
+	}
+	else {
+		die "unknown conversion $spec\n";
+	}
+}
+
+my (%write, %read);
+
+if ($opts->{to}{type} eq 'sv') {
+	$write{start} = sub {
+
+	};
+	$write{row} = \&write_sv_row;
+	$write{end} = \&write_sv_end;
+}
+else {
+	
+}
+
+sub t_start {
+	
+}
+
+sub t_end {
+
+}
+
+
+if ($opts->{from}{type} eq 'sv') {
+	my @call = (
+		on_table_start => \&t_start,
+		on_table_end => \&t_end,
+		on_header => \&t_row,
+		on_row => \&t_row,
+	);
+
+	if (@ARGV) {
+		read_sv(
+			@call,
+			files => \@ARGV,
+		);
+	}
+	else {
+		read_sv(
+			@call,
+			fh => \*STDIN,
+		);
+	}
+}
+else {
+	
+}
+
+
